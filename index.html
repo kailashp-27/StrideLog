@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="StrideLog — personal treadmill run tracker. Log, track, and review your runs. Works offline." />
+  <title>StrideLog</title>
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Theme colors -->
+  <meta name="theme-color" content="#14161A" />
+  <meta name="msapplication-TileColor" content="#14161A" />
+
+  <!-- iOS PWA meta tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="StrideLog" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+
+  <!-- Icons -->
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="StrideLog" />
+  <meta property="og:description" content="Personal treadmill run tracker. Log, track, and review your runs." />
+  <meta property="og:type" content="website" />
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="app-title">STRIDE<span>LOG</span></div>
+    <nav class="month-nav" id="month-nav-wrap" aria-label="Month navigation">
+      <button id="prev-month" aria-label="Previous month">&#8249;</button>
+      <span id="month-label">July 2026</span>
+      <button id="next-month" aria-label="Next month">&#8250;</button>
+    </nav>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB: DASHBOARD                                         -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel active" id="tab-dashboard" role="tabpanel" aria-label="Dashboard">
+
+    <!-- Console Hero -->
+    <section class="console-hero" aria-label="Monthly summary">
+      <div class="console-inner">
+        <div class="console-stat">
+          <div class="console-stat__value red" id="stat-distance">0.0</div>
+          <div class="console-stat__label">km this month</div>
+        </div>
+        <div class="console-stat">
+          <div class="console-stat__value red" id="stat-sessions">0</div>
+          <div class="console-stat__label">sessions</div>
+        </div>
+        <div class="console-stat">
+          <div class="console-stat__value teal" id="stat-pace">—:——</div>
+          <div class="console-stat__label">avg pace</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Monthly Goal -->
+    <section class="section" aria-label="Monthly goal">
+      <div class="goal-header">
+        <h2>Monthly Goal</h2>
+        <div class="goal-edit-wrap">
+          <span id="goal-display" title="Tap to edit goal" role="button" tabindex="0">30 km</span>
+          <input id="goal-input" type="number" min="1" max="9999" step="0.5" aria-label="Goal kilometres" />
+        </div>
+      </div>
+      <div class="goal-progress-wrap">
+        <div class="goal-text">
+          <span class="goal-text__km" id="goal-progress-text">0.0 / 30 km</span>
+          <span class="goal-text__pct" id="goal-pct-text">0%</span>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Weekly Goal -->
+    <section class="section" aria-label="Weekly goal">
+      <div class="goal-header">
+        <h2>Weekly Goal</h2>
+        <div class="goal-edit-wrap">
+          <span id="wgoal-display" title="Tap to edit weekly goal" role="button" tabindex="0">20 km</span>
+          <input id="wgoal-input" type="number" min="1" max="999" step="0.5" aria-label="Weekly goal kilometres" />
+        </div>
+      </div>
+      <div id="week-lanes" class="week-lanes" aria-label="Weekly goal progress">
+        <!-- Week rows injected by JS -->
+      </div>
+      <div class="week-summary" id="week-summary"></div>
+    </section>
+
+    <!-- Run Calendar -->
+    <section class="section" aria-label="Monthly run calendar">
+      <div class="calendar-header">
+        <h2>Run Calendar</h2>
+      </div>
+      <div class="cal-grid" id="cal-grid" aria-label="Calendar">
+        <div class="cal-dow">Su</div>
+        <div class="cal-dow">Mo</div>
+        <div class="cal-dow">Tu</div>
+        <div class="cal-dow">We</div>
+        <div class="cal-dow">Th</div>
+        <div class="cal-dow">Fr</div>
+        <div class="cal-dow">Sa</div>
+        <!-- Day cells injected by JS -->
+      </div>
+    </section>
+
+  </div><!-- /#tab-dashboard -->
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB: LOG RUN                                           -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-log" role="tabpanel" aria-label="Log a Run">
+
+    <section class="section log-section" aria-label="Log a run">
+      <div class="form-header">Log a Run</div>
+      <form id="run-form" novalidate>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="f-date">Date</label>
+            <input type="date" id="f-date" required aria-required="true" />
+          </div>
+          <div class="form-group">
+            <label for="f-distance">Distance (km)</label>
+            <input type="number" id="f-distance" min="0.1" max="999" step="0.01" placeholder="5.00" required aria-required="true" />
+          </div>
+          <div class="form-group">
+            <label for="f-duration">Duration (min)</label>
+            <input type="number" id="f-duration" min="1" max="9999" step="1" placeholder="30" required aria-required="true" />
+          </div>
+          <div class="form-group">
+            <label for="f-incline">Incline (%)</label>
+            <input type="number" id="f-incline" min="0" max="40" step="0.5" placeholder="0" />
+          </div>
+          <div class="pace-preview">
+            <span class="pace-preview__label">Pace (min/km)</span>
+            <span class="pace-preview__value" id="pace-preview">—:——</span>
+          </div>
+          <div class="form-group full">
+            <label for="f-notes">Notes</label>
+            <textarea id="f-notes" placeholder="Felt strong today…" rows="3"></textarea>
+          </div>
+        </div>
+        <button type="submit" class="btn-add" id="btn-add-run">+ Add Run</button>
+      </form>
+    </section>
+
+  </div><!-- /#tab-log -->
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB: ANALYTICS                                         -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-analytics" role="tabpanel" aria-label="Analytics">
+
+    <!-- Weekly Volume Chart -->
+    <section class="section" aria-label="Weekly volume">
+      <div class="chart-section-header">
+        <h2>Weekly Volume</h2>
+        <span class="chart-subtitle">Last 8 weeks</span>
+      </div>
+      <div class="weekly-volume-wrap" id="weekly-volume-chart" aria-label="Weekly km bar chart">
+        <!-- Bars injected by JS -->
+      </div>
+    </section>
+
+    <!-- Pace Trend -->
+    <section class="section" aria-label="Pace trend">
+      <div class="chart-section-header">
+        <h2>Pace Trend</h2>
+        <span class="chart-subtitle">Last 20 runs · lower is faster</span>
+      </div>
+      <div class="pace-chart-wrap" id="pace-chart" aria-label="Pace trend line chart">
+        <!-- SVG injected by JS -->
+      </div>
+    </section>
+
+    <!-- Yearly Breakdown -->
+    <section class="yearly-stats" aria-label="Yearly statistics">
+      <div class="yearly-header">
+        <h2>This Year — Monthly Breakdown</h2>
+        <span class="yearly-year" id="yearly-year-label">2026</span>
+      </div>
+      <div class="yearly-chart" id="yearly-chart" aria-label="Monthly km chart">
+        <!-- Month rows injected by JS -->
+      </div>
+    </section>
+
+  </div><!-- /#tab-analytics -->
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- TAB: HISTORY                                           -->
+  <!-- ══════════════════════════════════════════════════════ -->
+  <div class="tab-panel" id="tab-history" role="tabpanel" aria-label="History">
+
+    <!-- Run History -->
+    <section class="section" aria-label="Run history">
+      <div class="history-header">
+        <span id="history-month-label">This Month</span>
+      </div>
+      <div class="run-list" id="run-list">
+        <!-- Run cards injected by JS -->
+      </div>
+    </section>
+
+    <!-- All-time Stats -->
+    <footer class="stats-footer" aria-label="All-time statistics">
+      <h2>All-Time Stats</h2>
+      <div class="stats-grid">
+        <div class="stat-tile">
+          <div class="stat-tile__value" id="stat-lifetime-km">0.0</div>
+          <div class="stat-tile__label">Total Distance (km)</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile__value" id="stat-lifetime-runs">0</div>
+          <div class="stat-tile__label">Total Runs</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile__value" id="stat-streak">0</div>
+          <div class="stat-tile__label">Longest Streak (days)</div>
+        </div>
+        <div class="stat-tile">
+          <div class="stat-tile__value" id="stat-best-pace">—:——</div>
+          <div class="stat-tile__label">Best Pace (min/km)</div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Data Controls -->
+    <div class="data-controls" aria-label="Data management">
+      <button class="btn-data" id="btn-export" aria-label="Export all run data as JSON">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 1v9m0 0L5 7m3 3 3-3M1 12v1a2 2 0 002 2h10a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Export JSON
+      </button>
+      <button class="btn-data" id="btn-import" aria-label="Import run data from JSON file">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M8 15V6m0 0 3 3M8 6 5 9M1 4V3a2 2 0 012-2h10a2 2 0 012 2v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Import JSON
+      </button>
+      <input type="file" id="import-file" accept=".json,application/json" aria-label="Select JSON file to import" />
+    </div>
+
+  </div><!-- /#tab-history -->
+
+  <!-- ── Bottom Navigation Bar ──────────────────────────── -->
+  <nav class="bottom-nav" aria-label="App navigation" role="tablist">
+
+    <button class="nav-btn active" data-tab="dashboard" id="nav-dashboard"
+            aria-label="Dashboard" aria-selected="true" role="tab">
+      <svg class="nav-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"
+              stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M9 21V12h6v9" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+      </svg>
+      <span class="nav-label">Dashboard</span>
+    </button>
+
+    <button class="nav-btn" data-tab="log" id="nav-log"
+            aria-label="Log a Run" aria-selected="false" role="tab">
+      <div class="nav-log-ring">
+        <svg class="nav-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <span class="nav-label">Log Run</span>
+    </button>
+
+    <button class="nav-btn" data-tab="analytics" id="nav-analytics"
+            aria-label="Analytics" aria-selected="false" role="tab">
+      <svg class="nav-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M4 20V14M9 20V8M14 20V12M19 20V4"
+              stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span class="nav-label">Analytics</span>
+    </button>
+
+    <button class="nav-btn" data-tab="history" id="nav-history"
+            aria-label="History" aria-selected="false" role="tab">
+      <svg class="nav-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"
+              stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <rect x="9" y="3" width="6" height="4" rx="1"
+              stroke="currentColor" stroke-width="1.8"/>
+        <path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+      <span class="nav-label">History</span>
+    </button>
+
+  </nav>
+
+</div><!-- /#app -->
+
+<!-- ── Edit Run Modal (bottom sheet) ──────────────────── -->
+<div class="modal-overlay" id="edit-overlay" role="dialog"
+     aria-modal="true" aria-label="Edit run" aria-hidden="true">
+  <div class="modal-sheet" id="edit-sheet">
+    <div class="modal-handle" aria-hidden="true"></div>
+    <div class="modal-header">
+      <h2 class="modal-title">Edit Run</h2>
+      <button class="modal-close" id="edit-close" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <form id="edit-form" novalidate>
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="e-date">Date</label>
+          <input type="date" id="e-date" required aria-required="true" />
+        </div>
+        <div class="form-group">
+          <label for="e-distance">Distance (km)</label>
+          <input type="number" id="e-distance" min="0.1" max="999" step="0.01" placeholder="5.00" required aria-required="true" />
+        </div>
+        <div class="form-group">
+          <label for="e-duration">Duration (min)</label>
+          <input type="number" id="e-duration" min="1" max="9999" step="1" placeholder="30" required aria-required="true" />
+        </div>
+        <div class="form-group">
+          <label for="e-incline">Incline (%)</label>
+          <input type="number" id="e-incline" min="0" max="40" step="0.5" placeholder="0" />
+        </div>
+        <div class="pace-preview">
+          <span class="pace-preview__label">Pace (min/km)</span>
+          <span class="pace-preview__value" id="edit-pace-preview">—:——</span>
+        </div>
+        <div class="form-group full">
+          <label for="e-notes">Notes</label>
+          <textarea id="e-notes" placeholder="Felt strong today…" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-modal-cancel" id="edit-cancel">Cancel</button>
+        <button type="submit" class="btn-modal-save">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Toast Container ─────────────────────────────────── -->
+<div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+<!-- ── Scripts ─────────────────────────────────────────── -->
+<script src="app.js"></script>
+<script>
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('[StrideLog] SW registered:', reg.scope))
+        .catch(err => console.warn('[StrideLog] SW registration failed:', err));
+    });
+  }
+</script>
+</body>
+</html>
