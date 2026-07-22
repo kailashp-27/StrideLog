@@ -98,6 +98,43 @@ function parsePaceToMinutes(paceStr) {
   return parseInt(parts[0], 10) + parseInt(parts[1], 10) / 60;
 }
 
+/**
+ * parseDuration(str) — interprets user input as MM.SS
+ * Examples:
+ *   '30'     → 30.0  (30 minutes)
+ *   '30.45'  → 30.75 (30 min 45 sec)
+ *   '30.5'   → 30.5  (30 min 5 sec → 30 + 5/60 ≈ 30.0833)
+ *   '1.3045' → invalid / ignored beyond two decimal places
+ * The decimal part is ALWAYS treated as seconds (00–59).
+ */
+function parseDuration(str) {
+  if (str === '' || str == null) return NaN;
+  const s = String(str).trim();
+  const dotIdx = s.indexOf('.');
+  if (dotIdx === -1) {
+    // No decimal — plain minutes
+    const mins = parseFloat(s);
+    return isNaN(mins) ? NaN : mins;
+  }
+  const minPart = parseFloat(s.substring(0, dotIdx));
+  const secStr  = s.substring(dotIdx + 1).padEnd(2, '0').substring(0, 2); // take up to 2 digits
+  const secPart = parseInt(secStr, 10);
+  if (isNaN(minPart) || isNaN(secPart) || secPart >= 60) return NaN;
+  return minPart + secPart / 60;
+}
+
+/**
+ * formatDurationDisplay(durationMin) — converts stored decimal minutes → 'MM.SS'
+ * e.g. 30.75 → '30.45'  (30 min 45 sec)
+ */
+function formatDurationDisplay(durationMin) {
+  if (durationMin == null || isNaN(durationMin)) return '';
+  const mins = Math.floor(durationMin);
+  const secs = Math.round((durationMin - mins) * 60);
+  if (secs === 0) return String(mins);
+  return `${mins}.${String(secs).padStart(2, '0')}`;
+}
+
 function monthLabel(year, month) {
   return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
@@ -112,17 +149,272 @@ function firstDayOfWeek(year, month) {
 
 // ── Utility: consecutive-streak calculator ────────────────
 function longestStreak(runs) {
-  if (!runs.length) return 0;
+  return longestStreakWithDates(runs).count;
+}
+
+function longestStreakWithDates(runs) {
+  if (!runs.length) return { count: 0, startDate: null, endDate: null };
   const dates = [...new Set(runs.map(r => r.date))].sort();
   let best = 1, cur = 1;
+  let bestStart = dates[0], bestEnd = dates[0];
+  let curStart = dates[0];
   for (let i = 1; i < dates.length; i++) {
     const prev = new Date(dates[i-1]);
     const curr = new Date(dates[i]);
     const diff = (curr - prev) / 86400000;
-    if (diff === 1) { cur++; best = Math.max(best, cur); }
-    else cur = 1;
+    if (diff === 1) {
+      cur++;
+      if (cur > best) {
+        best = cur;
+        bestStart = curStart;
+        bestEnd = dates[i];
+      }
+    } else {
+      cur = 1;
+      curStart = dates[i];
+    }
   }
-  return best;
+  return { count: best, startDate: bestStart, endDate: bestEnd };
+}
+
+// ── Utility: format ISO date as short readable label ───────
+function formatDateShort(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m-1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ── Utility: parse pace string "M:SS" → decimal minutes ────
+function parsePaceInput(str) {
+  if (!str || !str.trim()) return NaN;
+  const s = str.trim();
+  const parts = s.split(':');
+  if (parts.length === 2) {
+    const m = parseInt(parts[0], 10);
+    const sec = parseInt(parts[1], 10);
+    if (!isNaN(m) && !isNaN(sec) && sec >= 0 && sec < 60) return m + sec / 60;
+  }
+  // plain decimal minutes
+  const val = parseFloat(s);
+  return isNaN(val) ? NaN : val;
+}
+
+// ── Personal Records ──────────────────────────────────────
+function computePRs(runs) {
+  const validRuns = runs.filter(r => r.distanceKm > 0 && r.durationMin > 0);
+
+  // Best average pace (any run)
+  let bestAvgPace = null;
+  if (validRuns.length) {
+    const sorted = [...validRuns].sort((a, b) =>
+      (a.durationMin / a.distanceKm) - (b.durationMin / b.distanceKm)
+    );
+    const r = sorted[0];
+    bestAvgPace = {
+      paceDecimal: r.durationMin / r.distanceKm,
+      paceStr: formatPace(r.durationMin, r.distanceKm),
+      date: r.date
+    };
+  }
+
+  // Best 1 km (runs with distanceKm >= 1): fastest pace → pace × 1
+  let best1km = null;
+  const runs1k = validRuns.filter(r => r.distanceKm >= 1);
+  if (runs1k.length) {
+    const sorted = [...runs1k].sort((a, b) =>
+      (a.durationMin / a.distanceKm) - (b.durationMin / b.distanceKm)
+    );
+    const r = sorted[0];
+    const paceDecimal = r.durationMin / r.distanceKm;
+    const estMin = Math.floor(paceDecimal);
+    const estSec = Math.round((paceDecimal - estMin) * 60);
+    best1km = {
+      paceDecimal,
+      paceStr: formatPace(r.durationMin, r.distanceKm),
+      estTime: `${estMin}:${String(estSec).padStart(2, '0')}`,
+      date: r.date
+    };
+  }
+
+  // Best 2 km (runs with distanceKm >= 2): fastest pace → pace × 2
+  let best2km = null;
+  const runs2k = validRuns.filter(r => r.distanceKm >= 2);
+  if (runs2k.length) {
+    const sorted = [...runs2k].sort((a, b) =>
+      (a.durationMin / a.distanceKm) - (b.durationMin / b.distanceKm)
+    );
+    const r = sorted[0];
+    const paceDecimal = r.durationMin / r.distanceKm;
+    const est2 = paceDecimal * 2;
+    const estMin = Math.floor(est2);
+    const estSec = Math.round((est2 - estMin) * 60);
+    best2km = {
+      paceDecimal,
+      paceStr: formatPace(r.durationMin, r.distanceKm),
+      estTime: `${estMin}:${String(estSec).padStart(2, '0')}`,
+      date: r.date
+    };
+  }
+
+  // Best streak
+  const streakInfo = longestStreakWithDates(runs);
+
+  return { bestAvgPace, best1km, best2km, streak: streakInfo };
+}
+
+function checkAndToastPRs(newRun, prevRuns) {
+  if (!newRun.distanceKm || !newRun.durationMin) return;
+  const oldPRs = computePRs(prevRuns);
+  const newPace = newRun.durationMin / newRun.distanceKm;
+
+  // Check best avg pace
+  if (!oldPRs.bestAvgPace || newPace < oldPRs.bestAvgPace.paceDecimal) {
+    const pStr = formatPace(newRun.durationMin, newRun.distanceKm);
+    showToast(`New PR! Best pace — ${pStr}/km`, 'pr');
+  }
+
+  // Check best 1km
+  if (newRun.distanceKm >= 1) {
+    if (!oldPRs.best1km || newPace < oldPRs.best1km.paceDecimal) {
+      showToast(`New PR! Best 1 km estimate`, 'pr');
+    }
+  }
+
+  // Check best 2km
+  if (newRun.distanceKm >= 2) {
+    if (!oldPRs.best2km || newPace < oldPRs.best2km.paceDecimal) {
+      showToast(`New PR! Best 2 km estimate`, 'pr');
+    }
+  }
+}
+
+function renderPRCard() {
+  const runs = loadRuns();
+  const prs = computePRs(runs);
+  const container = document.getElementById('pr-card-content');
+  if (!container) return;
+
+  const items = [];
+
+  // Best 1 km
+  if (prs.best1km) {
+    items.push(`
+      <div class="pr-item">
+        <div class="pr-item__label">Best 1 km</div>
+        <div class="pr-item__value">${prs.best1km.estTime}</div>
+        <div class="pr-item__sub">${prs.best1km.paceStr}/km</div>
+        <div class="pr-item__date">${formatDateShort(prs.best1km.date)}</div>
+      </div>`);
+  } else {
+    items.push(`<div class="pr-item pr-item--empty"><div class="pr-item__label">Best 1 km</div><div class="pr-item__value">—</div><div class="pr-item__date">Log a 1km+ run</div></div>`);
+  }
+
+  // Best 2 km
+  if (prs.best2km) {
+    items.push(`
+      <div class="pr-item">
+        <div class="pr-item__label">Best 2 km</div>
+        <div class="pr-item__value">${prs.best2km.estTime}</div>
+        <div class="pr-item__sub">${prs.best2km.paceStr}/km</div>
+        <div class="pr-item__date">${formatDateShort(prs.best2km.date)}</div>
+      </div>`);
+  } else {
+    items.push(`<div class="pr-item pr-item--empty"><div class="pr-item__label">Best 2 km</div><div class="pr-item__value">—</div><div class="pr-item__date">Log a 2km+ run</div></div>`);
+  }
+
+  // Best avg pace
+  if (prs.bestAvgPace) {
+    items.push(`
+      <div class="pr-item">
+        <div class="pr-item__label">Best pace</div>
+        <div class="pr-item__value">${prs.bestAvgPace.paceStr}</div>
+        <div class="pr-item__sub">min/km</div>
+        <div class="pr-item__date">${formatDateShort(prs.bestAvgPace.date)}</div>
+      </div>`);
+  } else {
+    items.push(`<div class="pr-item pr-item--empty"><div class="pr-item__label">Best pace</div><div class="pr-item__value">—</div><div class="pr-item__date">No runs yet</div></div>`);
+  }
+
+  // Best streak
+  const sc = prs.streak;
+  let streakDateRange = '';
+  if (sc.count > 0 && sc.startDate && sc.endDate && sc.startDate !== sc.endDate) {
+    streakDateRange = `${formatDateShort(sc.startDate)}–${formatDateShort(sc.endDate)}`;
+  } else if (sc.count > 0 && sc.startDate) {
+    streakDateRange = formatDateShort(sc.startDate);
+  }
+  if (sc.count > 0) {
+    items.push(`
+      <div class="pr-item">
+        <div class="pr-item__label">Best streak</div>
+        <div class="pr-item__value">${sc.count}<span class="pr-item__unit"> days</span></div>
+        <div class="pr-item__sub">${streakDateRange}</div>
+        <div class="pr-item__date">&nbsp;</div>
+      </div>`);
+  } else {
+    items.push(`<div class="pr-item pr-item--empty"><div class="pr-item__label">Best streak</div><div class="pr-item__value">—</div><div class="pr-item__date">No runs yet</div></div>`);
+  }
+
+  container.innerHTML = items.join('');
+}
+
+// ── Suggested Pace ────────────────────────────────────────
+// How much faster than the monthly average to suggest (3% nudge)
+const PACE_NUDGE = 0.97;
+
+function getSuggestedPace() {
+  const runs = loadRuns();
+  const now = new Date();
+  const cy = now.getFullYear();
+  const cm = now.getMonth();
+
+  function monthAvg(year, month) {
+    const mRuns = runs.filter(r => {
+      const [ry, rm] = r.date.split('-').map(Number);
+      return ry === year && (rm - 1) === month && r.distanceKm > 0 && r.durationMin > 0;
+    });
+    if (mRuns.length < 2) return null;
+    const totalKm  = mRuns.reduce((s, r) => s + r.distanceKm, 0);
+    const totalMin = mRuns.reduce((s, r) => s + r.durationMin, 0);
+    const avgPace  = totalMin / totalKm;
+    // Apply nudge: suggest slightly faster than average to be motivating
+    return { paceDecimal: avgPace * PACE_NUDGE, avgPaceDecimal: avgPace, count: mRuns.length };
+  }
+
+  const thisMo = monthAvg(cy, cm);
+  if (thisMo) {
+    thisMo.label = `avg this month (${thisMo.count} runs) · beat by ~3%`;
+    return thisMo;
+  }
+
+  let py = cy, pm = cm - 1;
+  if (pm < 0) { pm = 11; py--; }
+  const prevMo = monthAvg(py, pm);
+  if (prevMo) {
+    prevMo.label = `last month's avg · beat by ~3%`;
+    return prevMo;
+  }
+
+  return null;
+}
+
+function renderPaceSuggestion() {
+  const el = document.getElementById('pace-suggestion');
+  if (!el) return;
+  const sug = getSuggestedPace();
+  if (!sug) {
+    el.innerHTML = '';
+    el.hidden = true;
+    return;
+  }
+  const targetStr = formatPace(sug.paceDecimal, 1);
+  const avgStr    = formatPace(sug.avgPaceDecimal, 1);
+  el.hidden = false;
+  el.innerHTML = `
+    <span class="pace-sug__label">Target pace:</span>
+    <span class="pace-sug__value">${targetStr}/km</span>
+    <span class="pace-sug__basis">${sug.label} (${avgStr}/km)</span>
+  `;
 }
 
 // ── Toast System ──────────────────────────────────────────
@@ -131,7 +423,7 @@ function showToast(msg, type = 'success') {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
 
-  const icon = type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ';
+  const icon = type === 'success' ? '✓' : type === 'error' ? '✗' : type === 'pr' ? '★' : 'ℹ';
   toast.innerHTML = `<span style="font-weight:700;font-family:var(--font-mono)">${icon}</span> ${msg}`;
 
   container.appendChild(toast);
@@ -306,9 +598,18 @@ function renderHistory() {
     card.className = 'run-card';
     card.setAttribute('data-id', run.id);
 
+    // Under-target indicator: only show if target set AND pace beat it
+    let underTargetBadge = '';
+    if (run.targetPaceMinPerKm && run.distanceKm > 0 && run.durationMin > 0) {
+      const actualPace = run.durationMin / run.distanceKm;
+      if (actualPace < run.targetPaceMinPerKm) {
+        underTargetBadge = `<span class="under-target" title="Beat target pace">↓ under target</span>`;
+      }
+    }
+
     card.innerHTML = `
       <div class="run-card__top">
-        <div class="run-card__date">${formatDate(run.date)}</div>
+        <div class="run-card__date">${formatDate(run.date)}${underTargetBadge}</div>
         <div class="run-card__actions">
           <button class="btn-edit" data-id="${run.id}" aria-label="Edit run on ${run.date}">Edit</button>
           <button class="btn-delete" data-id="${run.id}" aria-label="Delete run on ${run.date}">Delete</button>
@@ -324,11 +625,11 @@ function renderHistory() {
           <span class="metric__unit">min/km</span>
         </div>
         ${run.durationMin ? `<div class="metric">
-          <span class="metric__value" style="font-size:0.95rem;color:var(--chalk)">${run.durationMin}</span>
+          <span class="metric__value dur">${formatDurationDisplay(run.durationMin)}</span>
           <span class="metric__unit">min</span>
         </div>` : ''}
         ${run.incline ? `<div class="metric">
-          <span class="metric__value" style="font-size:0.95rem;color:var(--muted)">${run.incline}%</span>
+          <span class="metric__value incl">${run.incline}%</span>
           <span class="metric__unit">incline</span>
         </div>` : ''}
       </div>
@@ -376,6 +677,8 @@ function renderStats() {
   document.getElementById('stat-lifetime-runs').textContent = lifetimeRuns;
   document.getElementById('stat-streak').textContent        = streak;
   document.getElementById('stat-best-pace').textContent     = bestPace;
+
+  renderPRCard();
 }
 
 // ── Render: Weekly Goal ───────────────────────────────────
@@ -411,14 +714,15 @@ function renderWeeklyGoal() {
     let km = 0;
     runs.forEach(r => {
       const [ry, rm, rd] = r.date.split('-').map(Number);
-      if (ry === year && (rm - 1) === month) {
-        const d = new Date(ry, rm - 1, rd);
-        if (d >= w.start && d <= w.end) km += (r.distanceKm || 0);
-      }
+      const d = new Date(ry, rm - 1, rd);
+      d.setHours(0, 0, 0, 0);
+      // Count ALL runs that fall within this week's range (not just current month)
+      if (d >= w.start && d <= w.end) km += (r.distanceKm || 0);
     });
 
     const hit     = km >= weeklyKm;
-    const future  = w.start > today;
+    // A week is only "future" if its END is still ahead of today (i.e. hasn't started yet)
+    const future  = w.end < today ? false : w.start > today;
     const current = today >= w.start && today <= w.end;
 
     return { idx, km, hit, future, current, start: w.start, end: w.end };
@@ -464,18 +768,7 @@ function renderWeeklyGoal() {
   const isPerfect       = totalPast > 0 && hitsCount === totalPast;
 
   const summary = document.getElementById('week-summary');
-  if (!totalPast) {
-    summary.innerHTML = `<span class="week-summary__hits">—</span><span>No weeks completed yet this month</span>`;
-  } else {
-    const badge = isPerfect
-      ? `<span class="week-summary__badge perfect">Perfect Month!</span>`
-      : '';
-    summary.innerHTML = `
-      <span class="week-summary__hits">${hitsCount}/${totalPast}</span>
-      <span>weeks hit this month</span>
-      ${badge}
-    `;
-  }
+  summary.innerHTML = ''; // removed per user request
 }
 
 // ── Render: Yearly Stats ──────────────────────────────────
@@ -527,8 +820,10 @@ function renderYearlyStats() {
 }
 
 // ══════════════════════════════════════════════════════════
-// ANALYTICS: WEEKLY VOLUME CHART (last 8 weeks)
+// ANALYTICS: WEEKLY VOLUME CHART (8-week paginated window)
 // ══════════════════════════════════════════════════════════
+let volOffset = 0; // pages back from current 8-week window (0 = most recent)
+
 function renderWeeklyVolumeChart() {
   const runs = loadRuns();
   const today = new Date();
@@ -538,15 +833,21 @@ function renderWeeklyVolumeChart() {
   const currentSunday = new Date(today);
   currentSunday.setDate(today.getDate() - today.getDay());
 
-  // Build last 8 weeks (oldest → newest)
+  // Anchor: end of the displayed window. Offset 0 = this week is the last col.
+  // Each page steps back 8 weeks.
+  const anchorSunday = new Date(currentSunday);
+  anchorSunday.setDate(currentSunday.getDate() - volOffset * 8 * 7);
+
+  // Build 8 weeks ending at anchorSunday (oldest → newest)
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const weeks = [];
   for (let i = 7; i >= 0; i--) {
-    const wStart = new Date(currentSunday);
-    wStart.setDate(currentSunday.getDate() - i * 7);
+    const wStart = new Date(anchorSunday);
+    wStart.setDate(anchorSunday.getDate() - i * 7);
     const wEnd = new Date(wStart);
     wEnd.setDate(wStart.getDate() + 6);
-    weeks.push({ start: wStart, end: wEnd, isCurrent: i === 0 });
+    const isCurrent = volOffset === 0 && i === 0;
+    weeks.push({ start: wStart, end: wEnd, isCurrent });
   }
 
   // Sum km per week
@@ -564,7 +865,7 @@ function renderWeeklyVolumeChart() {
     return {
       km,
       isCurrent: w.isCurrent,
-      label: `${MONTH_ABBR[m]}\n${d}`  // two-line label
+      label: `${MONTH_ABBR[m]}\n${d}`
     };
   });
 
@@ -587,7 +888,45 @@ function renderWeeklyVolumeChart() {
     `;
     container.appendChild(col);
   });
+
+  // Update the range label
+  const rangeStart = weeks[0].start;
+  const rangeEnd   = weeks[7].end;
+  const fmt = d => `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}`;
+  const rangeEl = document.getElementById('vol-range-label');
+  if (rangeEl) {
+    rangeEl.textContent = volOffset === 0
+      ? 'Last 8 weeks'
+      : `${fmt(rangeStart)} – ${fmt(rangeEnd)}`;
+  }
+
+  // Enable/disable next button (can't go forward past current window)
+  const nextBtn = document.getElementById('vol-next');
+  if (nextBtn) nextBtn.disabled = volOffset === 0;
+
+  // Disable prev if there are no runs older than the window start
+  const prevBtn = document.getElementById('vol-prev');
+  if (prevBtn) {
+    const windowStart = weeks[0].start;
+    const hasOlder = runs.some(r => {
+      const [ry, rm, rd] = r.date.split('-').map(Number);
+      return new Date(ry, rm - 1, rd) < windowStart;
+    });
+    prevBtn.disabled = !hasOlder;
+  }
 }
+
+// Wire up vol-nav buttons (once DOM is ready)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('vol-prev')?.addEventListener('click', () => {
+    volOffset++;
+    renderWeeklyVolumeChart();
+  });
+  document.getElementById('vol-next')?.addEventListener('click', () => {
+    if (volOffset > 0) { volOffset--; renderWeeklyVolumeChart(); }
+  });
+});
+
 
 // ══════════════════════════════════════════════════════════
 // ANALYTICS: PACE TREND CHART (last 20 runs, SVG line chart)
@@ -794,7 +1133,8 @@ function renderAll() {
   renderWeeklyGoal();
   renderCalendar();
   renderHistory();
-  renderStats();
+  renderStats(); // also calls renderPRCard()
+  renderPaceSuggestion();
   // Charts only render when analytics tab is active (performance)
   if (activeTab === 'analytics') {
     renderWeeklyVolumeChart();
@@ -809,15 +1149,19 @@ function renderAll() {
 document.getElementById('run-form').addEventListener('submit', e => {
   e.preventDefault();
 
-  const dateVal     = document.getElementById('f-date').value.trim();
-  const distanceVal = parseFloat(document.getElementById('f-distance').value);
-  const durationVal = parseInt(document.getElementById('f-duration').value, 10);
-  const inclineVal  = parseFloat(document.getElementById('f-incline').value) || 0;
-  const notesVal    = document.getElementById('f-notes').value.trim();
+  const dateVal       = document.getElementById('f-date').value.trim();
+  const distanceVal   = parseFloat(document.getElementById('f-distance').value);
+  const durationVal   = parseDuration(document.getElementById('f-duration').value);
+  const inclineVal    = parseFloat(document.getElementById('f-incline').value) || 0;
+  const notesVal      = document.getElementById('f-notes').value.trim();
+  const targetPaceStr = (document.getElementById('f-target-pace')?.value || '').trim();
+  const targetPaceVal = parsePaceInput(targetPaceStr);
 
   if (!dateVal) { showToast('Please enter a date.', 'error'); return; }
   if (!distanceVal || distanceVal <= 0) { showToast('Please enter a valid distance.', 'error'); return; }
-  if (!durationVal || durationVal <= 0) { showToast('Please enter a valid duration.', 'error'); return; }
+  if (isNaN(durationVal) || durationVal <= 0) { showToast('Please enter a valid duration (e.g. 30 or 30.45 for 30 min 45 sec).', 'error'); return; }
+
+  const prevRuns = loadRuns();
 
   const run = {
     id:          uid(),
@@ -827,10 +1171,15 @@ document.getElementById('run-form').addEventListener('submit', e => {
     incline:     inclineVal,
     notes:       notesVal || ''
   };
+  if (!isNaN(targetPaceVal) && targetPaceVal > 0) {
+    run.targetPaceMinPerKm = targetPaceVal;
+  }
 
-  const runs = loadRuns();
-  runs.push(run);
-  saveRuns(runs);
+  // Check PRs before adding the new run
+  checkAndToastPRs(run, prevRuns);
+
+  prevRuns.push(run);
+  saveRuns(prevRuns);
 
   // Jump to the month of the added run on dashboard
   const [runYear, runMonth] = dateVal.split('-').map(Number);
@@ -843,8 +1192,13 @@ document.getElementById('run-form').addEventListener('submit', e => {
   document.getElementById('run-form').reset();
   document.getElementById('f-date').value = todayISO();
   document.getElementById('pace-preview').textContent = '—:——';
+  renderPaceSuggestion();
 
-  showToast(`Run logged — ${distanceVal.toFixed(2)} km in ${durationVal} min`, 'success');
+  const dispSecs = Math.round((durationVal - Math.floor(durationVal)) * 60);
+  const durLabel = dispSecs > 0
+    ? `${Math.floor(durationVal)} min ${dispSecs} sec`
+    : `${Math.floor(durationVal)} min`;
+  showToast(`Run logged — ${distanceVal.toFixed(2)} km in ${durLabel}`, 'success');
 
   // Switch to dashboard to see the run in context
   switchTab('dashboard');
@@ -887,9 +1241,20 @@ function openEditModal(runId) {
 
   document.getElementById('e-date').value     = run.date;
   document.getElementById('e-distance').value = run.distanceKm;
-  document.getElementById('e-duration').value = run.durationMin;
+  document.getElementById('e-duration').value = formatDurationDisplay(run.durationMin);
   document.getElementById('e-incline').value  = run.incline || '';
   document.getElementById('e-notes').value    = run.notes || '';
+
+  // Populate target pace field if present
+  const tpEl = document.getElementById('e-target-pace');
+  if (tpEl) {
+    if (run.targetPaceMinPerKm) {
+      tpEl.value = formatPace(run.targetPaceMinPerKm, 1);
+    } else {
+      tpEl.value = '';
+    }
+  }
+
   updateEditPacePreview();
 
   const overlay = document.getElementById('edit-overlay');
@@ -911,7 +1276,7 @@ function closeEditModal() {
 
 function updateEditPacePreview() {
   const dist = parseFloat(document.getElementById('e-distance').value);
-  const dur  = parseInt(document.getElementById('e-duration').value, 10);
+  const dur  = parseDuration(document.getElementById('e-duration').value);
   document.getElementById('edit-pace-preview').textContent = formatPace(dur, dist);
 }
 
@@ -920,15 +1285,17 @@ document.getElementById('edit-form').addEventListener('submit', e => {
   e.preventDefault();
   if (!editingRunId) return;
 
-  const dateVal     = document.getElementById('e-date').value.trim();
-  const distanceVal = parseFloat(document.getElementById('e-distance').value);
-  const durationVal = parseInt(document.getElementById('e-duration').value, 10);
-  const inclineVal  = parseFloat(document.getElementById('e-incline').value) || 0;
-  const notesVal    = document.getElementById('e-notes').value.trim();
+  const dateVal       = document.getElementById('e-date').value.trim();
+  const distanceVal   = parseFloat(document.getElementById('e-distance').value);
+  const durationVal   = parseDuration(document.getElementById('e-duration').value);
+  const inclineVal    = parseFloat(document.getElementById('e-incline').value) || 0;
+  const notesVal      = document.getElementById('e-notes').value.trim();
+  const targetPaceStr = (document.getElementById('e-target-pace')?.value || '').trim();
+  const targetPaceVal = parsePaceInput(targetPaceStr);
 
   if (!dateVal) { showToast('Please enter a date.', 'error'); return; }
   if (!distanceVal || distanceVal <= 0) { showToast('Please enter a valid distance.', 'error'); return; }
-  if (!durationVal || durationVal <= 0) { showToast('Please enter a valid duration.', 'error'); return; }
+  if (isNaN(durationVal) || durationVal <= 0) { showToast('Please enter a valid duration (e.g. 30 or 30.45 for 30 min 45 sec).', 'error'); return; }
 
   const runs = loadRuns();
   const idx  = runs.findIndex(r => r.id === editingRunId);
@@ -938,7 +1305,7 @@ document.getElementById('edit-form').addEventListener('submit', e => {
     return;
   }
 
-  runs[idx] = {
+  const updatedRun = {
     ...runs[idx],
     date:        dateVal,
     distanceKm:  distanceVal,
@@ -946,6 +1313,12 @@ document.getElementById('edit-form').addEventListener('submit', e => {
     incline:     inclineVal,
     notes:       notesVal
   };
+  if (!isNaN(targetPaceVal) && targetPaceVal > 0) {
+    updatedRun.targetPaceMinPerKm = targetPaceVal;
+  } else {
+    delete updatedRun.targetPaceMinPerKm;
+  }
+  runs[idx] = updatedRun;
 
   saveRuns(runs);
 
@@ -1056,12 +1429,17 @@ wgoalInput.addEventListener('keydown', e => {
 // ── Feature: Log Form Pace Preview ────────────────────────
 function updatePacePreview() {
   const dist = parseFloat(document.getElementById('f-distance').value);
-  const dur  = parseInt(document.getElementById('f-duration').value, 10);
+  const dur  = parseDuration(document.getElementById('f-duration').value);
   document.getElementById('pace-preview').textContent = formatPace(dur, dist);
 }
 
 document.getElementById('f-distance').addEventListener('input', updatePacePreview);
 document.getElementById('f-duration').addEventListener('input', updatePacePreview);
+
+// Render pace suggestion whenever log tab is shown
+document.getElementById('nav-log').addEventListener('click', () => {
+  renderPaceSuggestion();
+});
 
 // ── Feature: Export ───────────────────────────────────────
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -1151,4 +1529,5 @@ document.getElementById('import-file').addEventListener('change', e => {
   document.getElementById('f-date').value = todayISO();
   switchTab('dashboard'); // ensure dashboard is active on load
   renderAll();
+  renderPaceSuggestion();
 })();

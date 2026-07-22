@@ -128,6 +128,10 @@
 
     <section class="section log-section" aria-label="Log a run">
       <div class="form-header">Log a Run</div>
+
+      <!-- Suggested pace banner (shown when monthly data available) -->
+      <div id="pace-suggestion" class="pace-suggestion" aria-live="polite" hidden></div>
+
       <form id="run-form" novalidate>
         <div class="form-grid">
           <div class="form-group">
@@ -139,8 +143,8 @@
             <input type="number" id="f-distance" min="0.1" max="999" step="0.01" placeholder="5.00" required aria-required="true" />
           </div>
           <div class="form-group">
-            <label for="f-duration">Duration (min)</label>
-            <input type="number" id="f-duration" min="1" max="9999" step="1" placeholder="30" required aria-required="true" />
+            <label for="f-duration">Duration <span style="opacity:0.55;font-size:0.75em">(MM or MM.SS)</span></label>
+            <input type="text" inputmode="decimal" id="f-duration" placeholder="30 or 30.45" required aria-required="true" autocomplete="off" />
           </div>
           <div class="form-group">
             <label for="f-incline">Incline (%)</label>
@@ -149,6 +153,10 @@
           <div class="pace-preview">
             <span class="pace-preview__label">Pace (min/km)</span>
             <span class="pace-preview__value" id="pace-preview">—:——</span>
+          </div>
+          <div class="form-group">
+            <label for="f-target-pace">Target pace <span style="opacity:0.55;font-size:0.75em">(min/km, optional)</span></label>
+            <input type="text" inputmode="decimal" id="f-target-pace" placeholder="e.g. 6:45" autocomplete="off" />
           </div>
           <div class="form-group full">
             <label for="f-notes">Notes</label>
@@ -170,7 +178,11 @@
     <section class="section" aria-label="Weekly volume">
       <div class="chart-section-header">
         <h2>Weekly Volume</h2>
-        <span class="chart-subtitle">Last 8 weeks</span>
+        <div class="vol-nav" aria-label="Navigate weeks">
+          <button class="vol-nav__btn" id="vol-prev" aria-label="Previous 8 weeks" title="Previous 8 weeks">&#8592;</button>
+          <span class="vol-nav__label" id="vol-range-label">Last 8 weeks</span>
+          <button class="vol-nav__btn" id="vol-next" aria-label="Next 8 weeks" title="Next 8 weeks" disabled>&#8594;</button>
+        </div>
       </div>
       <div class="weekly-volume-wrap" id="weekly-volume-chart" aria-label="Weekly km bar chart">
         <!-- Bars injected by JS -->
@@ -238,6 +250,17 @@
         </div>
       </div>
     </footer>
+
+    <!-- Personal Records -->
+    <section class="pr-section" aria-label="Personal records">
+      <div class="pr-header">
+        <h2>Personal Records</h2>
+        <p class="pr-caption">estimated from logged runs</p>
+      </div>
+      <div id="pr-card-content" class="pr-grid">
+        <!-- Injected by JS -->
+      </div>
+    </section>
 
     <!-- Data Controls -->
     <div class="data-controls" aria-label="Data management">
@@ -330,8 +353,8 @@
           <input type="number" id="e-distance" min="0.1" max="999" step="0.01" placeholder="5.00" required aria-required="true" />
         </div>
         <div class="form-group">
-          <label for="e-duration">Duration (min)</label>
-          <input type="number" id="e-duration" min="1" max="9999" step="1" placeholder="30" required aria-required="true" />
+          <label for="e-duration">Duration <span style="opacity:0.55;font-size:0.75em">(MM or MM.SS)</span></label>
+          <input type="text" inputmode="decimal" id="e-duration" placeholder="30 or 30.45" required aria-required="true" autocomplete="off" />
         </div>
         <div class="form-group">
           <label for="e-incline">Incline (%)</label>
@@ -340,6 +363,10 @@
         <div class="pace-preview">
           <span class="pace-preview__label">Pace (min/km)</span>
           <span class="pace-preview__value" id="edit-pace-preview">—:——</span>
+        </div>
+        <div class="form-group">
+          <label for="e-target-pace">Target pace <span style="opacity:0.55;font-size:0.75em">(min/km, optional)</span></label>
+          <input type="text" inputmode="decimal" id="e-target-pace" placeholder="e.g. 6:45" autocomplete="off" />
         </div>
         <div class="form-group full">
           <label for="e-notes">Notes</label>
