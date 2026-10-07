@@ -1,118 +1,52 @@
-# StrideLog — Personal Treadmill Run Tracker
+# StrideLog
 
-A fully offline-capable PWA for manually logging treadmill runs. No backend, no accounts, no cloud — data lives on your device.
+A small app for logging treadmill runs and checking progress over time. Enter a run's distance and duration, and StrideLog calculates the pace and adds it to your history.
+
+It is built with plain HTML, CSS, and JavaScript. Runs are saved in the browser, so there is no account or backend to set up.
 
 ## Features
 
-- **Console hero** — LED-style readouts for distance, sessions, avg pace
-- **Monthly goal** — set a target km, track progress with a lane-striped progress bar
-- **Run calendar** — day grid with red tick markers proportional to distance
-- **Log a run** — date, distance, duration, incline, notes; pace auto-calculated
-- **Run history** — this month's runs, most recent first, each deletable
-- **All-time stats** — lifetime km, run count, longest streak, best pace
-- **Export / Import** — download your data as JSON, reimport on another device
+- Add, edit, and delete runs, including incline, notes, and target pace.
+- Set weekly and monthly distance goals.
+- Review a run calendar, weekly volume, pace trends, and yearly distance.
+- Track totals, streaks, best pace, and estimated personal records.
+- Export and import runs as JSON.
+- Install the app as a PWA and use cached pages offline.
 
-## File Structure
+## Run locally
 
-```
-stridelog/
-├── index.html      # App shell + PWA meta
-├── styles.css      # Design system (treadmill console aesthetic)
-├── app.js          # All app logic
-├── manifest.json   # PWA manifest
-├── sw.js           # Service worker (cache-first, offline-ready)
-├── icon-192.png    # PWA icon
-├── icon-512.png    # PWA icon
-└── README.md       # This file
-```
-
----
-
-## Deploying to GitHub Pages
-
-1. Push this folder to a GitHub repository (e.g., `your-username/stridelog`).
-2. Go to **Settings → Pages**.
-3. Under **Source**, choose `main` branch / `/ (root)` and click **Save**.
-4. Your app will be live at `https://your-username.github.io/stridelog/` within ~1 minute.
-
-> **Important for service worker**: GitHub Pages serves over HTTPS, so the service worker will register correctly. The app will be fully installable.
-
----
-
-## Deploying to Netlify (Drag & Drop — easiest)
-
-1. Go to [app.netlify.com](https://app.netlify.com) and log in (free account).
-2. On the dashboard, drag the entire `stridelog/` folder into the deploy zone.
-3. Netlify gives you a URL like `https://amazing-name-12345.netlify.app`.
-4. Optionally set a custom domain in **Site Settings → Domain management**.
-
----
-
-## Installing to Your Phone's Home Screen
-
-### Android / Chrome
-1. Open the app URL in Chrome.
-2. Tap the **⋮ (three-dot menu)** → **"Add to Home screen"**.
-3. Confirm — the app appears as a standalone icon on your home screen.
-4. When opened from the home screen, it runs in standalone mode (no browser chrome) and works **fully offline**.
-
-### iPhone / Safari
-1. Open the app URL in **Safari** (not Chrome — only Safari supports "Add to Home Screen" on iOS).
-2. Tap the **Share button** (square with arrow) at the bottom.
-3. Scroll down and tap **"Add to Home Screen"**.
-4. Edit the name if you like, then tap **Add**.
-5. The app launches in standalone mode and works offline.
-
----
-
-## Local Development
-
-No build step needed — open `index.html` directly in a browser for a quick look. 
-
-For the service worker to register (required for full PWA testing), you need to serve files over HTTP:
+From the repository root:
 
 ```bash
-# Option 1: Python (built-in)
 python -m http.server 8080
-
-# Option 2: Node http-server
-npx -y http-server . -p 8080
-
-# Option 3: VS Code Live Server extension
-# Right-click index.html → "Open with Live Server"
 ```
 
-Then open `http://localhost:8080` in Chrome.
+Open [localhost:8080](http://localhost:8080). There are no packages to install or build commands to run.
 
-To inspect the service worker and cached assets:
-- Open DevTools → **Application** tab
-- Check **Service Workers** (should show "activated and is running")
-- Check **Cache Storage** → `stridelog-v1` (all assets listed)
-- Check **Local Storage** → `stridelog:runs`, `stridelog:goal`
+Use localhost or an HTTPS host to test the service worker. After a successful first load and cache installation, the app can work offline.
 
----
+## Your data
 
-## Data Backup
+Runs and goals are stored in `localStorage` for the current browser and site address. There is no automatic sync between devices. Clearing the site's browser data removes your saved runs.
 
-Your data is stored in `localStorage` — it persists through app closes and phone restarts, but is tied to one browser/device.
+Use **Export JSON** to keep a backup or move runs to another device. **Import JSON** merges runs using their IDs and restores the monthly goal when present. The current export does not include the separate weekly goal.
 
-**To move data to a new device:**
-1. Tap **Export** — downloads `stridelog-export-YYYY-MM-DD.json`
-2. Transfer the file to the new device (AirDrop, email, Google Drive, etc.)
-3. Open StrideLog on the new device, tap **Import**, and select the file
-4. Your runs merge automatically (no duplicates)
+Estimated short-distance records are calculated from logged run pace, rather than measured splits.
 
----
+## Hosting and installation
 
-## PWA Checklist
+Serve the repository files from the root of a static HTTPS site. The manifest and service worker use absolute paths such as `/app.js` and `/index.html`. Hosting under a subdirectory, including a GitHub project Pages URL, needs those paths and `start_url` adjusted first.
 
-| Item | Status |
-|------|--------|
-| `manifest.json` with name, icons, display:standalone | ✅ |
-| `start_url: "/"` | ✅ |
-| `theme_color` + `background_color` | ✅ |
-| 192×192 and 512×512 icons | ✅ |
-| Service worker registered | ✅ |
-| Cache-first offline strategy | ✅ |
-| iOS meta tags (`apple-mobile-web-app-capable`, etc.) | ✅ |
-| HTTPS required (GitHub Pages / Netlify) | ✅ |
+On a phone, use the browser's install or Add to Home Screen option. Availability depends on the browser and platform.
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `index.html` | App screens and forms |
+| `app.js` | Run storage, statistics, charts, and import/export |
+| `styles.css` | Layout and styling |
+| `manifest.json` | App name, icons, and installation settings |
+| `sw.js` | Static asset caching and offline handling |
+
+When changing cached assets, update the cache version in `sw.js` so installed copies can pick up the new files.
